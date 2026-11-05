@@ -1,0 +1,22 @@
+{
+  "$comment": "令和10年分以後(法定どおりの場合)。2026.json との差分のみを記載し、読み込み時に上書きマージする。令和8・9年分の特例加算(基礎控除+42万/+5万、給与所得控除の最低保障+5万)が終了した後の値。tableRounding.from は公式の表が未公表のため概算。",
+  "year": 2028,
+  "label": "令和10年分",
+  "residentTaxLabel": "令和11年度",
+  "incomeTax": {
+    "salaryDeduction": {
+      "minimum": 690000,
+      "tableRounding": { "from": 2036000, "below": 6600000, "unit": 4000 },
+      "overrides": []
+    },
+    "basicDeduction": [
+      { "upTo": 1320000, "amount": 990000 },
+      { "upTo": 23500000, "amount": 620000 },
+      { "upTo": 24000000, "amount": 480000 },
+      { "upTo": 24500000, "amount": 320000 },
+      { "upTo": 25000000, "amount": 160000 },
+      { "upTo": null, "amount": 0 }
+    ],
+    "ideco": { "employeeNoCorporatePensionMonthlyLimit": 62000, "fromDecemberMonthlyLimit": 62000 }
+  }
+}

@@ -1,0 +1,163 @@
+{
+  "$comment": "令和8年分(2026年分)所得税 / 令和9年度(2026年所得に対する)住民税 / 2026年度社会保険。金額はすべて円。出典は docs/tax-parameters.md を参照。",
+  "year": 2026,
+  "label": "令和8年分",
+  "residentTaxLabel": "令和9年度",
+  "incomeTax": {
+    "salaryDeduction": {
+      "minimum": 740000,
+      "brackets": [
+        { "upTo": 1800000, "rate": 0.4, "add": -100000 },
+        { "upTo": 3600000, "rate": 0.3, "add": 80000 },
+        { "upTo": 6600000, "rate": 0.2, "add": 440000 },
+        { "upTo": 8500000, "rate": 0.1, "add": 1100000 },
+        { "upTo": null, "rate": 0, "add": 1950000 }
+      ],
+      "tableRounding": { "from": 2200000, "below": 6600000, "unit": 4000 },
+      "overrides": [
+        { "from": 2191000, "below": 2193000, "income": 1451000 },
+        { "from": 2193000, "below": 2196000, "income": 1453000 },
+        { "from": 2196000, "below": 2200000, "income": 1456000 }
+      ]
+    },
+    "basicDeduction": [
+      { "upTo": 4890000, "amount": 1040000 },
+      { "upTo": 6550000, "amount": 670000 },
+      { "upTo": 23500000, "amount": 620000 },
+      { "upTo": 24000000, "amount": 480000 },
+      { "upTo": 24500000, "amount": 320000 },
+      { "upTo": 25000000, "amount": 160000 },
+      { "upTo": null, "amount": 0 }
+    ],
+    "rates": [
+      { "upTo": 1949000, "rate": 0.05, "deduct": 0 },
+      { "upTo": 3299000, "rate": 0.1, "deduct": 97500 },
+      { "upTo": 6949000, "rate": 0.2, "deduct": 427500 },
+      { "upTo": 8999000, "rate": 0.23, "deduct": 636000 },
+      { "upTo": 17999000, "rate": 0.33, "deduct": 1536000 },
+      { "upTo": 39999000, "rate": 0.4, "deduct": 2796000 },
+      { "upTo": null, "rate": 0.45, "deduct": 4796000 }
+    ],
+    "reconstructionRate": 0.021,
+    "dependent": {
+      "incomeLimit": 620000,
+      "general": 380000,
+      "specific": 630000,
+      "elderly": 480000,
+      "elderlyCohabiting": 580000
+    },
+    "specificRelative": {
+      "$comment": "特定親族特別控除(19〜22歳の親族)。合計所得 upTo 以下なら amount",
+      "rows": [
+        { "upTo": 850000, "amount": 630000 },
+        { "upTo": 900000, "amount": 610000 },
+        { "upTo": 950000, "amount": 510000 },
+        { "upTo": 1000000, "amount": 410000 },
+        { "upTo": 1050000, "amount": 310000 },
+        { "upTo": 1100000, "amount": 210000 },
+        { "upTo": 1150000, "amount": 110000 },
+        { "upTo": 1200000, "amount": 60000 },
+        { "upTo": 1230000, "amount": 30000 }
+      ]
+    },
+    "workingStudent": { "amount": 270000, "incomeLimit": 890000 },
+    "lifeInsurance": {
+      "$comment": "新契約の控除。区分ごとに計算し、一般・介護医療・個人年金の合計上限あり",
+      "steps": [
+        { "upTo": 20000, "rate": 1, "add": 0 },
+        { "upTo": 40000, "rate": 0.5, "add": 10000 },
+        { "upTo": 80000, "rate": 0.25, "add": 20000 },
+        { "upTo": null, "rate": 0, "add": 40000 }
+      ],
+      "totalCap": 120000
+    },
+    "earthquakeInsurance": { "cap": 50000, "rate": 1 },
+    "medical": { "floor": 100000, "incomeRate": 0.05, "cap": 2000000 },
+    "ideco": { "employeeNoCorporatePensionMonthlyLimit": 23000, "fromDecemberMonthlyLimit": 62000 }
+  },
+  "residentTax": {
+    "basicDeduction": [
+      { "upTo": 24000000, "amount": 430000 },
+      { "upTo": 24500000, "amount": 290000 },
+      { "upTo": 25000000, "amount": 150000 },
+      { "upTo": null, "amount": 0 }
+    ],
+    "incomeRate": 0.1,
+    "perCapita": 5000,
+    "nonTaxableIncomeSingle": 450000,
+    "nonTaxableIncomeMinor": 1350000,
+    "dependent": { "general": 330000, "specific": 450000, "elderly": 380000, "elderlyCohabiting": 450000 },
+    "specificRelative": {
+      "rows": [
+        { "upTo": 950000, "amount": 450000 },
+        { "upTo": 1000000, "amount": 410000 },
+        { "upTo": 1050000, "amount": 310000 },
+        { "upTo": 1100000, "amount": 210000 },
+        { "upTo": 1150000, "amount": 110000 },
+        { "upTo": 1200000, "amount": 60000 },
+        { "upTo": 1230000, "amount": 30000 }
+      ]
+    },
+    "workingStudent": 260000,
+    "lifeInsurance": {
+      "steps": [
+        { "upTo": 12000, "rate": 1, "add": 0 },
+        { "upTo": 32000, "rate": 0.5, "add": 6000 },
+        { "upTo": 56000, "rate": 0.25, "add": 14000 },
+        { "upTo": null, "rate": 0, "add": 28000 }
+      ],
+      "totalCap": 70000
+    },
+    "earthquakeInsurance": { "cap": 25000, "rate": 0.5 },
+    "adjustment": {
+      "$comment": "調整控除の人的控除差(簡略化:基礎・扶養・勤労学生のみ)",
+      "rate": 0.05,
+      "threshold": 2000000,
+      "minimumBase": 50000,
+      "diff": { "basic": 50000, "general": 50000, "specific": 180000, "workingStudent": 10000 }
+    }
+  },
+  "socialInsurance": {
+    "region": "協会けんぽ 東京支部",
+    "healthRate": 0.0985,
+    "careRate": 0.0162,
+    "careAgeFrom": 40,
+    "careAgeTo": 64,
+    "childSupportRate": 0.0023,
+    "pensionRate": 0.183,
+    "employmentEmployeeRate": 0.005,
+    "healthBonusAnnualCap": 5730000,
+    "pensionBonusPerPaymentCap": 1500000,
+    "pensionGradeMin": 88000,
+    "pensionGradeMax": 650000,
+    "healthGrades": [
+      [0, 58000], [63000, 68000], [73000, 78000], [83000, 88000], [93000, 98000],
+      [101000, 104000], [107000, 110000], [114000, 118000], [122000, 126000], [130000, 134000],
+      [138000, 142000], [146000, 150000], [155000, 160000], [165000, 170000], [175000, 180000],
+      [185000, 190000], [195000, 200000], [210000, 220000], [230000, 240000], [250000, 260000],
+      [270000, 280000], [290000, 300000], [310000, 320000], [330000, 340000], [350000, 360000],
+      [370000, 380000], [395000, 410000], [425000, 440000], [455000, 470000], [485000, 500000],
+      [515000, 530000], [545000, 560000], [575000, 590000], [605000, 620000], [635000, 650000],
+      [665000, 680000], [695000, 710000], [730000, 750000], [770000, 790000], [810000, 830000],
+      [855000, 880000], [905000, 930000], [955000, 980000], [1005000, 1030000], [1055000, 1090000],
+      [1115000, 1150000], [1175000, 1210000], [1235000, 1270000], [1295000, 1330000], [1355000, 1390000]
+    ],
+    "nationalPensionMonthly": 17920,
+    "nationalHealthApprox": {
+      "$comment": "国民健康保険は自治体ごとに大きく異なるため概算値(東京23区程度を想定した簡略モデル)",
+      "incomeRate": 0.11,
+      "perCapita": 67000,
+      "cap": 1090000
+    }
+  },
+  "walls": {
+    "socialDependentAnnual": 1300000,
+    "socialDependentAnnualAge19to22": 1500000,
+    "employeeInsuranceMonthly": 88000
+  },
+  "benefits": {
+    "birthLumpSum": 500000,
+    "childAllowanceMonthly": { "under3": 15000, "age3to18": 10000, "thirdChildOrLater": 30000 },
+    "giftTaxBasicExemption": 1100000
+  }
+}
