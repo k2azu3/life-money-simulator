@@ -150,7 +150,7 @@ export function uniJobSweetSpot(s: GameState): number {
   }
   return best
 }
-export const HIGH_SCHOOL_JOB_OPTIONS = [0, 360_000, 800_000, 1_200_000]
+export const HIGH_SCHOOL_JOB_OPTIONS = [0, 360_000, 800_000, 1_200_000, 1_500_000]
 
 export function jobStartAge(s: GameState): number {
   return s.flags.path === 'work' ? 18 : 22

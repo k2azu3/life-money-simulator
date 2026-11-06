@@ -1,19 +1,11 @@
 import type { CalcStep } from '../engine'
-import { childAllowanceTotal, computeResidentTax, analyzeStudentJob, man } from '../engine'
-import type { GameState } from '../game/types'
-import { rulesFor, yearOf } from '../game/state'
-import {
-  chooseHighSchoolJob,
-  chooseOtoshidama,
-  choosePath,
-  enterBirth,
-  HIGH_SCHOOL_JOB_OPTIONS,
-  jobStartAge,
-} from '../game/actions'
+import { childAllowanceTotal, computeResidentTax, man } from '../engine'
+import type { GameState, GaugeDelta } from '../game/types'
+import { addCard, addGauges, rulesFor, yearOf } from '../game/state'
+import { chooseOtoshidama, choosePath, enterBirth, jobStartAge } from '../game/actions'
 
 export type SceneKind =
   | 'story'
-  | 'walls'
   | 'company'
   | 'payslip'
   | 'firstYearChoices'
@@ -25,6 +17,8 @@ export type SceneKind =
 export interface Choice {
   label: string
   detail?: string
+  /** 選ぶとゲージがどう動くか(画面にも表示する) */
+  effect?: GaugeDelta
   act: (s: GameState) => GameState
 }
 
@@ -37,16 +31,23 @@ export interface Scene {
   id: string
   kind: SceneKind
   stage: string
+  /** 見出しの上に出す「2032年・6歳」など */
+  when: (s: GameState) => string
   title: (s: GameState) => string
+  /** ゼイ吉のセリフ。1つ1文、2〜3つまで */
   lines: (s: GameState) => string[]
   facts?: (s: GameState) => { label: string; value: string; who?: string }[]
-  explain?: string
+  /** この場面のミッション(content/missions.ts のID)。クリアするまで先に進めない */
+  mission?: string
   why?: (s: GameState) => WhyBlock[]
   choices?: (s: GameState) => Choice[]
   onEnter?: (s: GameState) => GameState
 }
 
 const go = (sceneId: string) => (s: GameState): GameState => ({ ...s, sceneId })
+/** ゲージを動かしてから次の場面へ */
+const pick = (sceneId: string, effect: GaugeDelta | undefined, f: (s: GameState) => GameState = (s) => s): Choice['act'] =>
+  (s) => go(sceneId)(addGauges(f(s), effect))
 
 export const STAGES = ['誕生', '子ども時代', '高校生', '進路', '大学生', '就職', '年末調整', 'まとめ']
 
@@ -55,229 +56,204 @@ export const SCENES: Record<string, Scene> = {
     id: 'birth',
     kind: 'story',
     stage: '誕生',
-    title: (s) => `${yearOf(s, 0)}年 あなたはここに生まれました`,
+    when: (s) => `${yearOf(s, 0)}年・0歳`,
+    title: () => 'あなたはここに生まれました',
     onEnter: enterBirth,
-    lines: (s) => [
-      `おぎゃー!${s.name}さん、誕生おめでとさん!ワイは貯金箱の妖精、ゼイ吉や。`,
-      'これから一生ぶんのお金の流れを、いっしょに見ていくで。税金って聞くと眠くなる?大丈夫、ワイのダジャレで目ぇ覚まさせたる。……今のはまだダジャレちゃうで。',
-      'さっそくやけど、生まれた瞬間から「お金のイベント」は起きとる。親の健康保険から出産育児一時金、国から児童手当や。',
-    ],
+    lines: (s) => [`おぎゃー!${s.name}さん、誕生おめでとさん!ワイはお金の妖精ゼイ吉や。`, 'さっそく最初のミッションや。'],
+    mission: 'birthApply',
     facts: (s) => {
       const r = rulesFor(s, 0)
       return [
-        { label: '出産育児一時金', value: man(r.benefits.birthLumpSum), who: '親が受け取る' },
-        { label: '児童手当(0〜2歳)', value: `月${r.benefits.childAllowanceMonthly.under3.toLocaleString()}円`, who: '親が受け取る' },
-        { label: '児童手当 18歳までの合計', value: man(childAllowanceTotal(1, r)), who: '親が受け取る' },
+        { label: '出産育児一時金', value: man(r.benefits.birthLumpSum), who: '健康保険から' },
+        { label: '児童手当 18歳までの合計', value: man(childAllowanceTotal(1, r)), who: '国から(申請が必要)' },
       ]
     },
-    explain: 'birth',
     choices: () => [{ label: 'すくすく育つ(6歳へ)', act: go('otoshidama') }],
   },
   otoshidama: {
     id: 'otoshidama',
     kind: 'story',
     stage: '子ども時代',
-    title: (s) => `${yearOf(s, 6)}年 6歳 はじめてのお年玉`,
-    lines: () => [
-      '小学生になったで!お正月におじいちゃんおばあちゃんからお年玉や。これから中学卒業まで、毎年3万円くらいもらえそうやな。',
-      'ところで、もらったお金には「贈与税」っちゅう税金があるの、知っとった?……でもお年玉で心配はいらん。くわしくは「やさしい解説」を見てな。',
-      'さて、10年分のお年玉(合計30万円)、どうする?',
-    ],
-    explain: 'otoshidama',
+    when: (s) => `${yearOf(s, 6)}年・6歳`,
+    title: () => 'おじいちゃんからのお祝い',
+    lines: () => ['小学校入学や!おじいちゃんがお祝いをくれるって。', 'でも、もらい方しだいで税金がかかるんや。'],
+    mission: 'gift',
     choices: () => [
-      { label: '全部貯金する', detail: '30万円を貯金', act: (s) => go('highschool')(chooseOtoshidama(s, 'all')) },
-      { label: '半分貯金、半分使う', detail: '15万円を貯金', act: (s) => go('highschool')(chooseOtoshidama(s, 'half')) },
-      { label: '全部使う!', detail: 'ゲームにマンガに……', act: (s) => go('highschool')(chooseOtoshidama(s, 'none')) },
+      {
+        label: 'お年玉は全部貯金する',
+        detail: '10年分で30万円',
+        effect: { money: 5, happy: -2 },
+        act: pick('highschool', { money: 5, happy: -2 }, (s) => chooseOtoshidama(s, 'all')),
+      },
+      {
+        label: '半分貯金、半分使う',
+        detail: '15万円を貯金',
+        effect: { money: 2, happy: 4 },
+        act: pick('highschool', { money: 2, happy: 4 }, (s) => chooseOtoshidama(s, 'half')),
+      },
+      {
+        label: '全部使う!',
+        detail: 'ゲームにマンガに……',
+        effect: { happy: 8 },
+        act: pick('highschool', { happy: 8 }, (s) => chooseOtoshidama(s, 'none')),
+      },
     ],
   },
   highschool: {
     id: 'highschool',
     kind: 'story',
     stage: '高校生',
-    title: (s) => `${yearOf(s, 16)}年 16歳 アルバイトを始める?`,
-    lines: (s) => {
-      const out = [
-        '高校生になったな。アルバイトしてみるか?',
-        '16歳からは、親が「扶養控除」を受けられるようになる。あんたを養ってることで親の税金が安くなるしくみや。',
-        'ただし、あんたの年収が136万円を超えると、親は扶養控除を受けられへん。そうなると親の税金が増えるんや。',
-      ]
-      if (s.flags.lottery) out.unshift('そういや子どものころ宝くじで1万円当たっとったな。あれも税金はかからへんで。')
-      return out
-    },
-    explain: 'highschool',
-    why: (s) => {
-      const r = rulesFor(s, 16)
-      return HIGH_SCHOOL_JOB_OPTIONS.filter((x) => x > 0).map((x) => {
-        const a = analyzeStudentJob(x, 16, s.parentSalary, r)
-        return {
-          title: `年収${man(x)}の場合`,
-          steps: [
-            { label: '自分の所得税', value: a.ownIncomeTax },
-            { label: '自分の住民税(翌年)', value: a.ownResidentTaxNextYear, note: '18歳未満は所得135万円以下なら非課税' },
-            { label: '親の税金の増加', value: a.parentTaxIncrease },
-          ],
-        }
-      })
-    },
-    choices: () =>
-      HIGH_SCHOOL_JOB_OPTIONS.map((x) => ({
-        label: x === 0 ? 'バイトはしない(勉強と部活)' : `年${man(x)}くらい働く`,
-        detail:
-          x === 0 ? '' : x <= 400_000 ? '週2日くらい' : x <= 900_000 ? '週4日くらい' : 'かなりがっつり',
-        act: (s: GameState) => go('path')(chooseHighSchoolJob(s, x)),
-      })),
+    when: (s) => `${yearOf(s, 16)}年・16歳`,
+    title: () => 'アルバイトを始める',
+    lines: (s) => [
+      s.flags.lottery ? '子どものころ宝くじで1万円当たったな。あれは税金ゼロや。' : '高校生や!バイトしてみよか。',
+      'ただし稼ぎすぎると、親に迷惑がかかるで。',
+    ],
+    mission: 'hsJob',
+    choices: () => [{ label: '18歳へ(進路を決める)', act: go('path') }],
   },
   path: {
     id: 'path',
     kind: 'story',
     stage: '進路',
-    title: (s) => `${yearOf(s, 18)}年 18歳 進路を決める`,
-    lines: (s) => [
-      `高校卒業や!今の貯金は${man(s.savings)}。`,
-      '大学に行くか、働くか。大学なら学費の足しに奨学金を借りる手もある。ただし貸与型は「借金」やから、社会人になってから返していくんやで。',
-    ],
-    explain: 'scholarship',
+    when: (s) => `${yearOf(s, 18)}年・18歳`,
+    title: () => '進路を決める',
+    lines: (s) => [`高校卒業や!貯金は${man(s.savings)}。`, '大学なら奨学金を借りる手もある。でも、その前に……'],
+    mission: 'scholarship',
     choices: () => [
-      { label: '大学に進学する', detail: '学費は親が出してくれる', act: (s) => go('university')(choosePath(s, 'university')) },
+      {
+        label: '大学に進学する',
+        detail: '学費は親が出してくれる',
+        effect: { happy: 5 },
+        act: pick('university', { happy: 5 }, (s) => choosePath(s, 'university')),
+      },
       {
         label: '大学に進学+奨学金を借りる',
-        detail: '月5万円 × 4年 = 240万円を借りる',
-        act: (s) => go('university')(choosePath(s, 'universityLoan')),
+        detail: '月5万円×4年=240万円の借金',
+        effect: { money: -4, happy: 8 },
+        act: pick('university', { money: -4, happy: 8 }, (s) => choosePath(s, 'universityLoan')),
       },
-      { label: '高校を出て就職する', detail: '18歳で社会人デビュー', act: (s) => go('company')(choosePath(s, 'work')) },
+      {
+        label: '高校を出て就職する',
+        detail: '18歳で社会人デビュー',
+        effect: { money: 6 },
+        act: pick('company', { money: 6 }, (s) => choosePath(s, 'work')),
+      },
     ],
   },
   university: {
     id: 'university',
-    kind: 'walls',
+    kind: 'story',
     stage: '大学生',
-    title: (s) => `${yearOf(s, 19)}年 大学生 バイト年収と「壁」`,
-    lines: () => [
-      '大学生や!バイトのシフトをどれくらい入れるか決めよか。',
-      '「103万円の壁」って聞いたことあるやろ?実はそれ、もう昔の話や。令和8年分のルールやと、壁の位置はこうなっとる。',
-      'あんた自身と、親の財布。両方あわせた「家族全体の手取り」で考えるのがコツやで。',
-    ],
-    explain: 'walls',
+    when: (s) => `${yearOf(s, 19)}年・19歳`,
+    title: () => 'バイト年収と「年収の壁」',
+    lines: () => ['大学生や!シフトをどれくらい入れる?', '「103万円の壁」はもう昔の話。今の壁、知っとる?'],
+    mission: 'walls',
+    choices: () => [{ label: '卒業して就職活動へ', act: go('company') }],
   },
   company: {
     id: 'company',
     kind: 'company',
     stage: '就職',
-    title: (s) => `${yearOf(s, jobStartAge(s))}年 ${jobStartAge(s)}歳 就職先を選ぶ`,
+    when: (s) => `${yearOf(s, jobStartAge(s))}年・${jobStartAge(s)}歳`,
+    title: () => '就職先を選ぶ',
     lines: (s) => [
-      s.flags.path === 'work' ? '18歳で社会人デビューや!' : '大学卒業おめでとう!いよいよ社会人や。',
-      '内定は2社。月給だけやなくて、ボーナスも見て比べるんやで。',
+      s.flags.path === 'work' ? '18歳で社会人デビューや!' : '大学卒業おめでとう!',
+      '内定は2社。月給だけやなく、ボーナスも見て比べるんやで。',
     ],
-    explain: 'payslip',
   },
   payslip: {
     id: 'payslip',
     kind: 'payslip',
     stage: '就職',
-    title: () => '4月 はじめての給与明細',
-    lines: (s) => [
-      `初任給や!月給は${man(s.job?.company.monthly ?? 0)}……って、振り込まれた額、少なない!?`,
-      'それが「額面」と「手取り」の差や。明細の1行ずつ、何が引かれとるか見てみよか。',
-    ],
-    explain: 'payslip',
+    when: () => '4月',
+    title: () => 'はじめての給与明細',
+    lines: () => ['初任給や!でも、振り込まれる額は月給とちゃうで。'],
+    mission: 'takeHome',
   },
   firstYearChoices: {
     id: 'firstYearChoices',
     kind: 'firstYearChoices',
     stage: '就職',
-    title: () => '5月 社会人の「そなえ」を考える',
-    lines: () => [
-      '新生活が始まったら、保険のおばちゃん……やなくて保険の営業さんが来たり、先輩からiDeCoをすすめられたりするもんや。',
-      '払ったお金によっては税金が安くなるで。ただし、年末調整で自分から申告せんとアカン。覚えときや。',
-    ],
-    explain: 'firstYearChoices',
+    when: () => '5月',
+    title: () => '社会人の「そなえ」',
+    lines: () => ['保険やiDeCoをすすめられたで。', '払うと税金が安くなるものもある。12月に効いてくるで。'],
+    onEnter: (s) => addCard(s, 'firstYearChoices'),
   },
   june: {
     id: 'june',
     kind: 'story',
     stage: '就職',
-    title: () => '6月 住民税の通知が来た',
+    when: () => '6月',
+    title: () => '住民税の通知と、病院の領収書',
     lines: (s) => {
       const levy = s.residentLevies[yearOf(s, (s.job?.age ?? 22) - 1)] ?? 0
-      const out =
-        levy > 0
-          ? [
-              `6月の給与明細から、住民税が月${Math.floor(levy / 12).toLocaleString()}円引かれ始めたで。`,
-              `これは去年のバイト代に対する住民税(年${levy.toLocaleString()}円)や。住民税は「1年おくれ」でやってくるんや。`,
-            ]
-          : [
-              '6月や。去年の所得が少なかったから、住民税はゼロや。ラッキー!',
-              'でも油断したらアカン。今年の給料に対する住民税は、来年の6月から引かれ始める。2年目は手取りが減る年なんや。',
-            ]
-      if (s.flags.injured) {
-        out.push(
-          `……って、あんた階段で足の骨を折ったんか!?通院とリハビリで、今年の医療費は合計${man(s.flags.medicalExpenses ?? 0)}になりそうや。領収書は捨てたらアカンで!`,
-        )
-      } else {
-        out.push(`ついでに歯医者に行ったんやな。今年の医療費は${man(s.flags.medicalExpenses ?? 0)}。領収書はとっとこな。`)
-      }
-      return out
+      return [
+        levy > 0 ? `給料から住民税が月${Math.floor(levy / 12).toLocaleString()}円引かれ始めたで。` : '住民税の通知が来たで。今年は0円や。',
+        s.flags.injured
+          ? `それと、階段で骨折したんやて!?医療費は${man(s.flags.medicalExpenses ?? 0)}になりそうや。`
+          : `それと、歯医者に行ったんやな。医療費は${man(s.flags.medicalExpenses ?? 0)}や。`,
+      ]
     },
-    explain: 'resident',
+    mission: 'residentQuiz',
     why: (s) => {
       const age = (s.job?.age ?? 22) - 1
       const rec = s.records.find((r) => r.age === age)
       if (!rec) return []
       const r = computeResidentTax(
-        {
-          salaryGross: rec.gross,
-          socialInsurance: rec.socialInsurance,
-          workingStudent: age <= 22,
-          minor: age < 18,
-        },
+        { salaryGross: rec.gross, socialInsurance: rec.socialInsurance, workingStudent: age <= 22, minor: age < 18 },
         rulesFor(s, age),
       )
       return [{ title: `${age}歳のときの収入${man(rec.gross)}に対する住民税`, steps: r.steps }]
     },
-    choices: () => [{ label: '12月へ進む', act: go('yearEnd') }],
+    choices: (s) => [
+      {
+        label: '病院の領収書はとっておく',
+        detail: '引き出しにしまう',
+        act: (x) => go('yearEnd')(addCard({ ...x, flags: { ...x.flags, keptReceipts: true } }, 'medical')),
+      },
+      {
+        label: '領収書は捨てる',
+        detail: s.flags.injured ? '部屋がスッキリ' : 'どうせ使わへんし',
+        effect: { happy: 2 },
+        act: pick('yearEnd', { happy: 2 }, (x) => ({ ...x, flags: { ...x.flags, keptReceipts: false } })),
+      },
+    ],
   },
   yearEnd: {
     id: 'yearEnd',
     kind: 'yearEnd',
     stage: '年末調整',
-    title: () => '12月 はじめての年末調整',
-    lines: () => [
-      '来たで、12月!会社の総務部から「年末調整の書類を出してください」ってメールや。',
-      '机の上の書類から、年末調整に出すものを選んで、申告書に入力するんや。出し忘れたら、戻ってくるはずのお金が戻ってこんで!',
-    ],
-    explain: 'yearEnd',
+    when: () => '12月',
+    title: () => 'はじめての年末調整',
+    lines: () => ['会社から「年末調整の書類を出して」やって。', '出し忘れたら、戻るはずのお金が戻らへんで!'],
   },
   finalReturn: {
     id: 'finalReturn',
     kind: 'finalReturn',
     stage: '年末調整',
-    title: (s) => `${yearOf(s, (s.job?.age ?? 22) + 1)}年2月 確定申告`,
+    when: (s) => `${yearOf(s, (s.job?.age ?? 22) + 1)}年2月`,
+    title: () => '確定申告',
     lines: (s) =>
       s.yearEnd?.submitted
-        ? ['年末調整では使えへん控除や、出し忘れた控除は、確定申告で取り返せるで。', 'e-Tax風の画面で申告してみよか。']
-        : [
-            '年末調整を出さへんかったんか……。でも安心し。確定申告すれば、ちゃんと取り返せるんや。',
-            'e-Tax風の画面で申告してみよか。',
-          ],
-    explain: 'finalReturn',
+        ? ['年末調整で取りこぼした分は、確定申告で取り返せるで。']
+        : ['年末調整を出さへんかったんか……。でも確定申告で取り返せるで。'],
   },
   summary: {
     id: 'summary',
     kind: 'summary',
     stage: 'まとめ',
-    title: () => '社会人1年目のまとめ',
-    lines: () => ['1年おつかれさん!あんたのお金の流れを図にしてみたで。'],
-    explain: 'resident',
+    when: () => '社会人1年目',
+    title: () => '1年のまとめ',
+    lines: () => ['1年おつかれさん!お金の流れを図にしたで。'],
   },
   end: {
     id: 'end',
     kind: 'end',
     stage: 'まとめ',
-    title: () => '第1部 完',
-    lines: (s) => [
-      `${s.name}さん、ここまでおつかれさん!誕生から初めての年末調整まで、よう頑張った。`,
-      'この先は結婚、住宅、副業、老後……と、お金のイベントはまだまだ続く。第2部をお楽しみに!',
-    ],
+    when: () => '第1部',
+    title: () => 'エンディング',
+    lines: (s) => [`${s.name}さん、ここまでおつかれさん!`, '結婚、家、副業、老後……お金の冒険はまだまだ続くで。'],
   },
 }
 

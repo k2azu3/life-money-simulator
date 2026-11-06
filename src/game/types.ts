@@ -79,10 +79,31 @@ export interface GameFlags {
   idecoMonthly?: number
   injured?: boolean
   medicalExpenses?: number
+  /** 6月:医療費の領収書をとっておいたか */
+  keptReceipts?: boolean
+}
+
+/** 3つのゲージ(0〜100) */
+export interface Gauges {
+  /** お金:かしこい選択で増える */
+  money: number
+  /** 徳:正直さ・まわりへの思いやり。ズルや不正で減る */
+  toku: number
+  /** しあわせ:楽しい体験や安心で増える */
+  happy: number
+}
+
+export type GaugeDelta = Partial<Gauges>
+
+/** ミッションの結果。stars = 0 は失敗(あきらめて先へ進んだ) */
+export interface MissionResult {
+  stars: number
+  tries: number
+  hintUsed: boolean
 }
 
 export interface GameState {
-  version: 1
+  version: 2
   name: string
   rulesMode: RulesMode
   birthYear: number
@@ -94,6 +115,11 @@ export interface GameState {
   records: YearRecord[]
   logs: MoneyLog[]
   badges: string[]
+  gauges: Gauges
+  /** ミッションID → 結果 */
+  missions: Record<string, MissionResult>
+  /** 手に入れた知識カードのID */
+  cards: string[]
   /** 所得の年(西暦) → その所得にかかる住民税の年額 */
   residentLevies: Record<number, number>
   job?: FirstJobYear
