@@ -1,6 +1,8 @@
 import { man, yen } from '../engine'
 import type { GameState } from '../game/types'
-import { yearOf } from '../game/state'
+import { totalStars, yearOf } from '../game/state'
+import { CARD_ORDER } from '../content/explain'
+import { CardShelf, GaugeBars, Stars } from './common'
 import { BADGES } from '../game/badges'
 import type { BadgeId } from '../game/badges'
 import {
@@ -100,7 +102,7 @@ export function SummaryView({ s, apply }: { s: GameState; apply: Apply }) {
       </section>
 
       <section className="card">
-        <h2>もしも……</h2>
+        <h2>もしも</h2>
         <ul>
           {others.map(({ c, w }) => (
             <li key={c.id}>
@@ -117,9 +119,11 @@ export function SummaryView({ s, apply }: { s: GameState; apply: Apply }) {
       </section>
 
       <YearCharts s={s} />
-      <button className="primary" onClick={() => apply((x) => ({ ...x, sceneId: 'end' }))}>
-        第1部のエンディングへ
-      </button>
+      <div className="actions">
+        <button className="primary" onClick={() => apply((x) => ({ ...x, sceneId: 'end' }))}>
+          第1部のエンディングへ
+        </button>
+      </div>
     </>
   )
 }
@@ -142,15 +146,41 @@ export function BadgeGrid({ s }: { s: GameState }) {
   )
 }
 
-export function EndView({ s, onRestart }: { s: GameState; onRestart: () => void }) {
+/** ゲージから称号を決める */
+export function rankOf(s: GameState): { title: string; text: string } {
+  const g = s.gauges
+  const avg = (g.money + g.toku + g.happy) / 3
+  if (g.toku < 40) return { title: 'ズル賢い人', text: 'お金の知識はあっても、ズルはいつか自分に返ってくる。次は正直にいこか。' }
+  if (g.money < 40) return { title: 'のんびり屋さん', text: '知らずに損してたところが多かったな。知識カードを読み返してみよ。' }
+  if (avg >= 72) return { title: 'お金の達人', text: '知識で得して、正直で、人生も楽しんどる。言うことなしや!' }
+  if (avg >= 60) return { title: 'しっかり者', text: 'お金の基本はばっちりや。星3つを全部ねらってみ。' }
+  return { title: 'お金の見習い', text: 'これからや!もう一度遊ぶと、もっと得する道が見えてくるで。' }
+}
+
+export function EndView({ s, onRestart, onOpenCard }: { s: GameState; onRestart: () => void; onOpenCard: (id: string) => void }) {
   const t = s.records.reduce(
     (a, r) => ({ gross: a.gross + r.gross, si: a.si + r.socialInsurance, it: a.it + r.incomeTax, rt: a.rt + r.residentTax, net: a.net + r.net }),
     { gross: 0, si: 0, it: 0, rt: 0, net: 0 },
   )
+  const rank = rankOf(s)
+  const played = Object.keys(s.missions).length
   return (
     <>
+      <section className="card result-card">
+        <p className="eyebrow">あなたの称号</p>
+        <h2 className="rank-title">{rank.title}</h2>
+        <p>{rank.text}</p>
+        <GaugeBars g={s.gauges} />
+        <p className="star-total">
+          <Stars n={1} max={1} /> 星 <strong>{totalStars(s)}</strong> / {played * 3}
+        </p>
+      </section>
       <section className="card">
-        <h2>ここまでのお金の総決算({s.records[s.records.length - 1]?.age ?? 0}歳まで)</h2>
+        <h2>知識カード({s.cards.length}/{CARD_ORDER.length})</h2>
+        <CardShelf s={s} onOpen={onOpenCard} />
+      </section>
+      <section className="card">
+        <h2>お金の総決算({s.records[s.records.length - 1]?.age ?? 0}歳まで)</h2>
         <table>
           <tbody>
             <tr><td>稼いだお金(額面)</td><td className="num">{yen(t.gross)}</td></tr>
@@ -164,14 +194,16 @@ export function EndView({ s, onRestart }: { s: GameState; onRestart: () => void 
         </table>
       </section>
       <section className="card">
-        <h2>獲得したバッジ({s.badges.length}/{Object.keys(BADGES).length})</h2>
+        <h2>バッジ({s.badges.length}/{Object.keys(BADGES).length})</h2>
         <BadgeGrid s={s} />
       </section>
       <section className="card">
         <h2>第2部の予告</h2>
-        <p>2年目の住民税ショック、ふるさと納税、NISA、副業と確定申告、結婚と配偶者控除、住宅ローン控除、転職、親の介護と相続、そして年金生活とエンディング……。</p>
+        <p>2年目の住民税ショック、ふるさと納税、NISA、副業と確定申告、結婚、住宅ローン、そして老後……。</p>
       </section>
-      <button className="primary" onClick={onRestart}>もう一度はじめから遊ぶ</button>
+      <div className="actions">
+        <button className="primary" onClick={onRestart}>もう一度はじめから遊ぶ</button>
+      </div>
     </>
   )
 }

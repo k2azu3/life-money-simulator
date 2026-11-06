@@ -2,28 +2,48 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { man } from './engine'
 import type { RulesMode } from './rules'
 import { SCENES, STAGES, stageIndex } from './content/scenes'
-import { EXPLAINS } from './content/explain'
-import type { GameState } from './game/types'
-import { clearSave, load, newGame, save } from './game/state'
+import { CARD_ORDER, EXPLAINS } from './content/explain'
+import { MISSIONS } from './content/missions'
+import type { GameState, Gauges } from './game/types'
+import { clearSave, load, newGame, save, totalStars } from './game/state'
 import { BADGES } from './game/badges'
 import type { BadgeId } from './game/badges'
-import { ExplainBody, Guide, Modal, StepList, Zeikichi } from './ui/common'
-import { CompanyView, FirstYearChoicesView, PayslipView, WallsView } from './ui/views1'
+import { CardShelf, EffectChips, ExplainBody, GAUGE_META, GaugeBars, Guide, Modal, SpeakerIcon, StepList, Zeikichi } from './ui/common'
+import { MissionCard } from './ui/MissionCard'
+import { CompanyView, FirstYearChoicesView, PayslipView } from './ui/views1'
 import { FinalReturnView, YearEndGame } from './ui/YearEndGame'
 import { BadgeGrid, EndView, SummaryView, YearCharts } from './ui/views2'
+import { setVoiceEnabled, stopSpeaking, voiceEnabled, voiceSupported } from './ui/voice'
 
 type Apply = (f: (s: GameState) => GameState) => void
+type Panel = { kind: 'card'; id: string } | { kind: 'why' } | { kind: 'records' } | null
+
+function gaugeToast(prev: Gauges, next: Gauges): string | null {
+  const parts = (Object.keys(GAUGE_META) as (keyof Gauges)[])
+    .map((k) => ({ k, d: next[k] - prev[k] }))
+    .filter((x) => x.d !== 0)
+    .map(({ k, d }) => `${GAUGE_META[k].icon}${GAUGE_META[k].label} ${d > 0 ? '+' : '−'}${Math.abs(d)}`)
+  return parts.length ? parts.join(' ') : null
+}
 
 export default function App() {
   const [state, setState] = useState<GameState | null>(null)
   const [toast, setToast] = useState<string | null>(null)
-  const [panel, setPanel] = useState<'explain' | 'why' | 'records' | null>(null)
+  const [panel, setPanel] = useState<Panel>(null)
+  const [voiceOn, setVoiceOn] = useState(voiceEnabled())
   const headingRef = useRef<HTMLHeadingElement>(null)
+  const toastTimer = useRef<number | undefined>(undefined)
 
   const showToast = useCallback((t: string) => {
     setToast(t)
-    window.setTimeout(() => setToast(null), 2600)
+    window.clearTimeout(toastTimer.current)
+    toastTimer.current = window.setTimeout(() => setToast(null), 2800)
   }, [])
+
+  const toggleVoice = () => {
+    setVoiceEnabled(!voiceOn)
+    setVoiceOn(!voiceOn)
+  }
 
   const apply: Apply = useCallback(
     (f) => {
@@ -34,11 +54,15 @@ export default function App() {
           const enter = SCENES[next.sceneId]?.onEnter
           if (enter) next = enter(next)
         }
+        const msgs: string[] = []
+        const g = gaugeToast(prev.gauges, next.gauges)
+        if (g) msgs.push(g)
         const newBadges = next.badges.filter((b) => !prev.badges.includes(b))
         if (newBadges.length) {
           const b = BADGES[newBadges[0] as BadgeId]
-          window.setTimeout(() => showToast(`バッジ獲得!${b.icon} ${b.title}`), 0)
+          msgs.push(`バッジ獲得 ${b.icon} ${b.title}`)
         }
+        if (msgs.length) window.setTimeout(() => showToast(msgs.join(' ・ ')), 0)
         save(next)
         return next
       })
@@ -60,47 +84,93 @@ export default function App() {
     setState(s)
   }
 
-  if (!state) return <TitleScreen onStart={start} onContinue={(s) => setState(s)} />
+  if (!state)
+    return <TitleScreen onStart={start} onContinue={(s) => setState(s)} voiceOn={voiceOn} onToggleVoice={toggleVoice} />
 
   const scene = SCENES[state.sceneId] ?? SCENES.birth
   const idx = stageIndex(scene.id)
-  const why = scene.why?.(state) ?? []
+  const missionCleared = !scene.mission || !!state.missions[scene.mission]
+  const why = missionCleared ? (scene.why?.(state) ?? []) : []
+  const openCard = (id: string) => setPanel({ kind: 'card', id })
 
   return (
     <>
+      <a className="skip-link" href="#main">本文へ移動</a>
       <header className="app-header">
-        <div className="container">
-          <span className="app-title">人生まるごとマネーシミュレーター</span>
-          <span className="status-chip">{state.name}・{state.age}歳</span>
-          <span className="status-chip">貯金 {man(state.savings)}</span>
-          <button className="ghost" style={{ minHeight: 36, padding: '4px 10px' }} onClick={() => setPanel('records')}>記録</button>
-          <button
-            className="ghost"
-            style={{ minHeight: 36, padding: '4px 10px' }}
-            onClick={() => {
-              save(state)
-              showToast('セーブしました')
-            }}
-          >
-            セーブ
-          </button>
-          <button className="ghost" style={{ minHeight: 36, padding: '4px 10px' }} onClick={() => setState(null)}>タイトル</button>
+        <div className="container header-top">
+          <div className="brand">
+            <Zeikichi size={32} />
+            <span>人生まるごと<span className="brand-long">マネーシミュレーター</span></span>
+          </div>
+          <nav className="header-actions" aria-label="メニュー">
+            {voiceSupported && (
+              <button className="header-btn" aria-pressed={voiceOn} onClick={toggleVoice}>
+                <SpeakerIcon off={!voiceOn} />
+                <span>音声</span>
+              </button>
+            )}
+            <button className="header-btn" onClick={() => setPanel({ kind: 'records' })}>
+              <span aria-hidden="true">📒</span>
+              <span>記録</span>
+            </button>
+            <button
+              className="header-btn"
+              onClick={() => {
+                save(state)
+                showToast('セーブしました')
+              }}
+            >
+              <span aria-hidden="true">💾</span>
+              <span>セーブ</span>
+            </button>
+            <button
+              className="header-btn"
+              onClick={() => {
+                stopSpeaking()
+                setState(null)
+              }}
+            >
+              <span aria-hidden="true">🏠</span>
+              <span>タイトル</span>
+            </button>
+          </nav>
+        </div>
+        <div className="container header-status">
+          <dl className="status">
+            <div>
+              <dt>{state.name}</dt>
+              <dd>{state.age}歳</dd>
+            </div>
+            <div>
+              <dt>貯金</dt>
+              <dd>{man(state.savings)}</dd>
+            </div>
+            <div>
+              <dt>星</dt>
+              <dd>★ {totalStars(state)}</dd>
+            </div>
+          </dl>
+          <GaugeBars g={state.gauges} compact />
         </div>
         <div className="container">
           <ol className="progress" aria-label="人生の進み具合">
             {STAGES.map((st, i) => (
               <li key={st} className={i < idx ? 'done' : i === idx ? 'current' : ''} aria-current={i === idx ? 'step' : undefined}>
-                {st}
+                <span className="dot" aria-hidden="true" />
+                <span className="progress-label">{st}</span>
               </li>
             ))}
           </ol>
         </div>
       </header>
 
-      <main>
+      <main id="main">
         <div className="container">
-          <h1 tabIndex={-1} ref={headingRef}>{scene.title(state)}</h1>
-          <Guide lines={scene.lines(state)} />
+          <p className="eyebrow">{scene.when(state)}</p>
+          <h1 tabIndex={-1} ref={headingRef}>
+            {scene.title(state)}
+          </h1>
+          <Guide lines={scene.lines(state)} voiceOn={voiceOn} />
           {scene.facts && (
             <div className="facts">
               {scene.facts(state).map((f) => (
@@ -112,37 +182,49 @@ export default function App() {
               ))}
             </div>
           )}
-          <div className="tool-row">
-            {scene.explain && EXPLAINS[scene.explain] && (
-              <button onClick={() => setPanel('explain')}>📖 やさしい解説</button>
-            )}
-            {why.length > 0 && <button onClick={() => setPanel('why')}>🔍 なぜ?(計算の内訳)</button>}
-          </div>
 
-          <SceneBody s={state} apply={apply} onRestart={() => { clearSave(); setState(null) }} />
+          {scene.mission && MISSIONS[scene.mission]?.options && (
+            <MissionCard key={`${state.sceneId}-${scene.mission}`} s={state} apply={apply} id={scene.mission} onOpenCard={openCard} />
+          )}
 
-          {scene.choices && (
-            <div className="choices">
-              {scene.choices(state).map((c) => (
-                <button key={c.label} className="choice" onClick={() => apply(c.act)}>
-                  {c.label}
-                  {c.detail && <small>{c.detail}</small>}
-                </button>
-              ))}
-            </div>
+          {missionCleared && (
+            <>
+              {why.length > 0 && (
+                <div className="tool-row">
+                  <button className="tertiary" onClick={() => setPanel({ kind: 'why' })}>
+                    🔍 計算の内訳を見る
+                  </button>
+                </div>
+              )}
+              <SceneBody s={state} apply={apply} onOpenCard={openCard} onRestart={() => { clearSave(); setState(null) }} />
+              {scene.choices && (
+                <div className="choices" role="group" aria-label="次の行動">
+                  {scene.choices(state).map((c) => (
+                    <button key={c.label} className="choice" onClick={() => apply(c.act)}>
+                      <span className="choice-main">
+                        <span className="choice-label">{c.label}</span>
+                        {c.detail && <span className="choice-detail">{c.detail}</span>}
+                      </span>
+                      <EffectChips d={c.effect} />
+                      <span className="choice-arrow" aria-hidden="true">›</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </>
           )}
         </div>
       </main>
 
       <Footer mode={state.rulesMode} />
 
-      {panel === 'explain' && scene.explain && (
-        <Modal title={`やさしい解説:${EXPLAINS[scene.explain].title}`} onClose={() => setPanel(null)}>
-          <ExplainBody id={scene.explain} />
+      {panel?.kind === 'card' && EXPLAINS[panel.id] && (
+        <Modal title={`${EXPLAINS[panel.id].icon} ${EXPLAINS[panel.id].title}`} onClose={() => setPanel(null)}>
+          <ExplainBody id={panel.id} />
         </Modal>
       )}
-      {panel === 'why' && (
-        <Modal title="なぜ?(計算の内訳)" onClose={() => setPanel(null)}>
+      {panel?.kind === 'why' && (
+        <Modal title="計算の内訳" onClose={() => setPanel(null)}>
           {why.map((b) => (
             <div key={b.title}>
               <h3>{b.title}</h3>
@@ -151,28 +233,36 @@ export default function App() {
           ))}
         </Modal>
       )}
-      {panel === 'records' && (
+      {panel?.kind === 'records' && (
         <Modal title="これまでの記録" onClose={() => setPanel(null)}>
+          <h3>ゲージ</h3>
+          <GaugeBars g={state.gauges} />
+          <h3>知識カード({state.cards.length}/{CARD_ORDER.length})</h3>
+          <CardShelf s={state} onOpen={openCard} />
           <YearCharts s={state} />
+          <h3>バッジ</h3>
+          <BadgeGrid s={state} />
           <h3>お金のできごと</h3>
           <ul>
             {state.logs.map((l, i) => (
-              <li key={i}>{l.age}歳:{l.text} {man(l.amount)}({l.who === 'family' ? '家族' : '自分'})</li>
+              <li key={i}>
+                {l.age}歳:{l.text} {man(l.amount)}({l.who === 'family' ? '家族' : '自分'})
+              </li>
             ))}
           </ul>
-          <h3>バッジ</h3>
-          <BadgeGrid s={state} />
         </Modal>
       )}
-      {toast && <div className="toast" role="status">{toast}</div>}
+      {toast && (
+        <div className="toast" role="status">
+          {toast}
+        </div>
+      )}
     </>
   )
 }
 
-function SceneBody({ s, apply, onRestart }: { s: GameState; apply: Apply; onRestart: () => void }) {
+function SceneBody({ s, apply, onOpenCard, onRestart }: { s: GameState; apply: Apply; onOpenCard: (id: string) => void; onRestart: () => void }) {
   switch (SCENES[s.sceneId]?.kind) {
-    case 'walls':
-      return <WallsView s={s} apply={apply} />
     case 'company':
       return <CompanyView s={s} apply={apply} />
     case 'payslip':
@@ -180,36 +270,63 @@ function SceneBody({ s, apply, onRestart }: { s: GameState; apply: Apply; onRest
     case 'firstYearChoices':
       return <FirstYearChoicesView s={s} apply={apply} />
     case 'yearEnd':
-      return <YearEndGame s={s} apply={apply} />
+      return <YearEndGame s={s} apply={apply} onOpenCard={onOpenCard} />
     case 'finalReturn':
-      return <FinalReturnView s={s} apply={apply} />
+      return <FinalReturnView s={s} apply={apply} onOpenCard={onOpenCard} />
     case 'summary':
       return <SummaryView s={s} apply={apply} />
     case 'end':
-      return <EndView s={s} onRestart={onRestart} />
+      return <EndView s={s} onRestart={onRestart} onOpenCard={onOpenCard} />
     default:
       return null
   }
 }
 
-function TitleScreen({ onStart, onContinue }: { onStart: (name: string, mode: RulesMode) => void; onContinue: (s: GameState) => void }) {
+function TitleScreen({
+  onStart,
+  onContinue,
+  voiceOn,
+  onToggleVoice,
+}: {
+  onStart: (name: string, mode: RulesMode) => void
+  onContinue: (s: GameState) => void
+  voiceOn: boolean
+  onToggleVoice: () => void
+}) {
   const saved = load()
   const [name, setName] = useState('')
   const [mode, setMode] = useState<RulesMode>('fixed2026')
   return (
     <>
-      <main>
+      <main id="main" className="title-main">
         <div className="container title-screen">
-          <Zeikichi size={120} />
-          <h1>人生まるごとマネーシミュレーター</h1>
-          <p>生まれてから社会人になるまでを体験しながら、税金・社会保険・年末調整のしくみを学ぼう。</p>
-          <div className="guide">
-            <div className="bubble">
-              <div className="guide-name">ゼイ吉</div>
-              <p>まいど!ワイはゼイ吉。貯金箱に住んどるお金の妖精や。あんたの一生ぶんのお金の流れ、案内したるで!</p>
-            </div>
+          <div className="hero">
+            <Zeikichi size={112} />
+            <p className="eyebrow">お金の人生ゲーム</p>
+            <h1>人生まるごと<br />マネーシミュレーター</h1>
+            <p className="hero-lead">知らないと損する。知ってると得する。<br />お金の知識で、人生のミッションをクリアしよう。</p>
           </div>
+
+          <ul className="howto">
+            <li>
+              <span className="howto-icon" aria-hidden="true">🎯</span>
+              <strong>ミッション</strong>
+              <span>各場面の課題は、お金の知識がないと解けない。</span>
+            </li>
+            <li>
+              <span className="howto-icon" aria-hidden="true">📊</span>
+              <strong>3つのゲージ</strong>
+              <span>💰お金・🙏徳・😊しあわせ。ズルをすると徳が下がる。</span>
+            </li>
+            <li>
+              <span className="howto-icon" aria-hidden="true">🃏</span>
+              <strong>知識カード</strong>
+              <span>困ったらヒント。クリアするとカードが集まる。</span>
+            </li>
+          </ul>
+
           <form
+            className="start-form"
             onSubmit={(e) => {
               e.preventDefault()
               onStart(name, mode)
@@ -226,10 +343,18 @@ function TitleScreen({ onStart, onContinue }: { onStart: (name: string, mode: Ru
                 <option value="statutory">法律どおり(2028年以降は特例終了)</option>
               </select>
             </div>
-            <div className="tool-row" style={{ justifyContent: 'center' }}>
-              <button type="submit" className="primary">はじめから</button>
+            {voiceSupported && (
+              <label className="switch">
+                <input type="checkbox" checked={voiceOn} onChange={onToggleVoice} />
+                <span>ゼイ吉の声を出す</span>
+              </label>
+            )}
+            <div className="form-actions">
+              <button type="submit" className="primary large">
+                はじめから
+              </button>
               {saved && (
-                <button type="button" onClick={() => onContinue(saved)}>
+                <button type="button" className="secondary large" onClick={() => onContinue(saved)}>
                   つづきから({saved.name}・{saved.age}歳)
                 </button>
               )}

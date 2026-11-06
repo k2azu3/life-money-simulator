@@ -1,14 +1,14 @@
 import { getRules } from '../rules'
 import type { RulesMode } from '../rules'
 import type { Rules } from '../engine'
-import type { GameState, MoneyLog, YearRecord } from './types'
+import type { GameState, GaugeDelta, Gauges, MoneyLog, YearRecord } from './types'
 import { BADGES } from './badges'
 
-export const SAVE_KEY = 'life-money-simulator:save:v1'
+export const SAVE_KEY = 'life-money-simulator:save:v2'
 
 export function newGame(name: string, rulesMode: RulesMode): GameState {
   return {
-    version: 1,
+    version: 2,
     name: name.trim() || 'あなた',
     rulesMode,
     birthYear: 2026,
@@ -20,6 +20,9 @@ export function newGame(name: string, rulesMode: RulesMode): GameState {
     records: [],
     logs: [],
     badges: [],
+    gauges: { money: 40, toku: 40, happy: 40 },
+    missions: {},
+    cards: [],
     residentLevies: {},
     seed: Math.floor(Math.random() * 2 ** 31),
   }
@@ -74,7 +77,7 @@ export function load(): GameState | null {
     const raw = localStorage.getItem(SAVE_KEY)
     if (!raw) return null
     const s = JSON.parse(raw) as GameState
-    return s.version === 1 ? s : null
+    return s.version === 2 ? s : null
   } catch {
     return null
   }
@@ -86,4 +89,45 @@ export function clearSave(): void {
   } catch {
     /* noop */
   }
+}
+
+const clamp = (v: number) => Math.max(0, Math.min(100, Math.round(v)))
+
+/** ゲージを増減する(0〜100に収める) */
+export function addGauges(s: GameState, d: GaugeDelta | undefined): GameState {
+  if (!d) return s
+  const g: Gauges = {
+    money: clamp(s.gauges.money + (d.money ?? 0)),
+    toku: clamp(s.gauges.toku + (d.toku ?? 0)),
+    happy: clamp(s.gauges.happy + (d.happy ?? 0)),
+  }
+  return { ...s, gauges: g }
+}
+
+/** 知識カードを手に入れる */
+export function addCard(s: GameState, id: string | undefined): GameState {
+  if (!id || s.cards.includes(id)) return s
+  return { ...s, cards: [...s.cards, id] }
+}
+
+/** 星の数:1回目でヒントなし=3。まちがえるたび・ヒントを見たら1つ減る(最低1) */
+export function starsFor(tries: number, hintUsed: boolean): number {
+  return Math.max(1, 3 - (tries - 1) - (hintUsed ? 1 : 0))
+}
+
+/** ミッションの結果を記録する。成功したら知識カードももらえる */
+export function recordMission(
+  s: GameState,
+  id: string,
+  r: { cleared: boolean; tries: number; hintUsed: boolean; card?: string },
+): GameState {
+  const stars = r.cleared ? starsFor(r.tries, r.hintUsed) : 0
+  let n: GameState = { ...s, missions: { ...s.missions, [id]: { stars, tries: r.tries, hintUsed: r.hintUsed } } }
+  // 失敗しても、ゼイ吉が教えてくれたカードは手に入る(次に活かせるように)
+  n = addCard(n, r.card)
+  return n
+}
+
+export function totalStars(s: GameState): number {
+  return Object.values(s.missions).reduce((a, m) => a + m.stars, 0)
 }

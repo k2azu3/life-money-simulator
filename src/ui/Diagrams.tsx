@@ -1,4 +1,7 @@
-/** 「やさしい解説」に添える簡単な図(文字と矢印だけで、色に頼らない) */
+import { computeWalls, man } from '../engine'
+import { getRules } from '../rules'
+
+/** 知識カードに添える簡単な図(文字と矢印だけで、色に頼らない) */
 export function Diagram({ name }: { name: string }) {
   switch (name) {
     case 'salaryFlow':
@@ -69,6 +72,29 @@ export function Diagram({ name }: { name: string }) {
           </div>
         </figure>
       )
+    case 'wallMap': {
+      const walls = computeWalls(getRules(2026, 'fixed2026'), 20)
+      return (
+        <figure>
+          <ul className="wall-list" aria-label="20歳・給与だけの場合の年収の壁">
+            {walls.map((w) => (
+              <li key={w.id}>
+                <span className="wall-amount">
+                  {man(w.amount)}
+                  {w.id === 'socialDependent' ? '〜' : '超'}
+                </span>
+                <span>
+                  <strong>{w.title}</strong>
+                  <br />
+                  <span className="note">{w.whatHappens}</span>
+                </span>
+              </li>
+            ))}
+          </ul>
+          <figcaption className="note">20歳・給与だけの場合(令和8年分)</figcaption>
+        </figure>
+      )
+    }
     default:
       return null
   }

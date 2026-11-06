@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import {
   computeIncomeTax,
-  computeWalls,
   healthStandardMonthly,
   man,
   monthlySocialInsurance,
@@ -10,72 +9,26 @@ import {
 } from '../engine'
 import type { GameState } from '../game/types'
 import { rulesFor } from '../game/state'
+import { addGauges } from '../game/state'
+import type { GaugeDelta } from '../game/types'
 import {
   chooseFirstYearOptions,
-  chooseUniJob,
   COMPANIES_HIGHSCHOOL,
   COMPANIES_UNIV,
   EARTHQUAKE_PREMIUM,
   LIFE_INSURANCE_MONTHLY,
   startJob,
-  UNI_JOB_OPTIONS,
-  uniJobMarginals,
-  uniJobSweetSpot,
 } from '../game/actions'
-import { Modal, StepList } from './common'
+import { EffectChips, Modal, StepList } from './common'
 
 type Apply = (f: (s: GameState) => GameState) => void
 
-export function WallsView({ s, apply }: { s: GameState; apply: Apply }) {
-  const r = rulesFor(s, 20)
-  const walls = computeWalls(r, 20)
-  const options = uniJobMarginals(s)
-  const sweet = uniJobSweetSpot(s)
-  return (
-    <>
-      <section className="card" aria-labelledby="wall-map">
-        <h2 id="wall-map">年収の壁マップ(20歳・給与だけの場合)</h2>
-        <ul className="wall-list">
-          {walls.map((w) => (
-            <li key={w.id}>
-              <span className="wall-amount">{man(w.amount)}{w.id === 'socialDependent' ? '以上' : '超'}</span>
-              <span>
-                <strong>{w.title}</strong>
-                <br />
-                <span className="note">{w.whatHappens}</span>
-              </span>
-            </li>
-          ))}
-        </ul>
-        <p className="note">※ 金額はすべて設定ファイル(令和8年分)から計算しています。住民税の非課税ラインは自治体によって少し違います。</p>
-      </section>
-      <section aria-labelledby="choose-job">
-        <h2 id="choose-job">1年あたりのバイト年収を選ぼう(4年間つづけます)</h2>
-        <div className="option-grid">
-          {options.map(({ analysis: a, marginal }, i) => (
-            <button key={a.salary} className="option-card" onClick={() => apply((x) => ({ ...chooseUniJob(x, a.salary), sceneId: 'company' }))}>
-              <strong>年収 {man(a.salary)}</strong>{' '}
-              {a.salary === sweet && <span className="tag best">✔ 壁の手前でコスパ最大</span>}
-              {marginal < 0.5 && <span className="tag bad">⚠ 働き損ゾーン</span>}
-              <dl>
-                <dt>自分の所得税</dt><dd>{yen(a.ownIncomeTax)}</dd>
-                <dt>自分の住民税(翌年)</dt><dd>{yen(a.ownResidentTaxNextYear)}</dd>
-                <dt>自分の国民健康保険(概算)</dt><dd>{yen(a.ownHealthInsurance)}</dd>
-                <dt>親の税金の増加</dt><dd>{yen(a.parentTaxIncrease)}</dd>
-                <dt><strong>家族全体の手取り</strong></dt><dd><strong>{yen(a.familyNet)}</strong></dd>
-              </dl>
-              {i > 0 && (
-                <p className="note" style={{ margin: '6px 0 0' }}>
-                  {man(UNI_JOB_OPTIONS[i - 1])}から増やした{man(a.salary - UNI_JOB_OPTIONS[i - 1])}のうち、手元に残るのは <strong>{Math.round(marginal * 100)}%</strong>
-                </p>
-              )}
-            </button>
-          ))}
-        </div>
-        <p className="note">「手元に残る割合」は、年収を増やした分から、自分の税金・保険料の増加と親の税金の増加を引いて計算しています。親は年収{man(s.parentSalary)}の会社員として計算しています。</p>
-      </section>
-    </>
-  )
+/** 安定の会社はしあわせ、勢いのある会社はお金が少し上がる */
+const COMPANY_EFFECT: Record<string, GaugeDelta> = {
+  shoji: { happy: 6 },
+  factory: { happy: 6 },
+  venture: { money: 3, happy: 2 },
+  shop: { money: 3 },
 }
 
 export function CompanyView({ s, apply }: { s: GameState; apply: Apply }) {
@@ -85,9 +38,12 @@ export function CompanyView({ s, apply }: { s: GameState; apply: Apply }) {
       {list.map((c) => {
         const firstYear = c.monthly * 9 + c.bonuses.reduce((a, b) => a + b.amount, 0)
         return (
-          <button key={c.id} className="option-card" onClick={() => apply((x) => ({ ...startJob(x, c), sceneId: 'payslip' }))}>
-            <strong>{c.name}</strong>
-            <p style={{ margin: '4px 0' }}>{c.blurb}</p>
+          <button key={c.id} className="option-card" onClick={() => apply((x) => ({ ...addGauges(startJob(x, c), COMPANY_EFFECT[c.id]), sceneId: 'payslip' }))}>
+            <span className="option-card-head">
+              <strong>{c.name}</strong>
+              <EffectChips d={COMPANY_EFFECT[c.id]} />
+            </span>
+            <span className="option-card-blurb">{c.blurb}</span>
             <dl>
               <dt>月給(額面)</dt><dd>{yen(c.monthly)}</dd>
               <dt>1年目の額面(4〜12月)</dt><dd>{man(firstYear)}</dd>
@@ -101,12 +57,12 @@ export function CompanyView({ s, apply }: { s: GameState; apply: Apply }) {
 }
 
 const ROW_HELP: Record<string, string> = {
-  health: '病気やケガのときの医療費を3割負担にしてくれる保険。会社も同じ額を払っています。',
-  childSupport: '2026年度から始まった「子ども・子育て支援金」。社会全体で子育てを支える仕組みで、健康保険料と一緒に集められます。',
-  pension: '老後の年金や、障害・遺族年金のための保険料。会社も同じ額を払っています。',
-  employment: '失業したときの給付や育児休業給付のための保険料。会社はもっと多く払っています。',
-  incomeTax: '毎月は「だいたい」の額。12月の年末調整で正しい額に直します。',
-  residentTax: '前の年の所得にかかる税金。1年目は前の年の所得が少ないので、ほとんどかかりません。',
+  health: '病院代を3割負担にしてくれる保険。会社も同じ額を払っている。',
+  childSupport: '2026年度に始まった、社会全体で子育てを支えるお金。',
+  pension: '老後の年金のための保険料。会社も同じ額を払っている。',
+  employment: '失業したときや育休のときの給付のための保険料。',
+  incomeTax: '毎月は「だいたい」の額。12月の年末調整で正しくなる。',
+  residentTax: '去年の所得にかかる税金。1年目はほぼ0円。',
 }
 
 export function PayslipView({ s, apply }: { s: GameState; apply: Apply }) {
@@ -147,7 +103,7 @@ export function PayslipView({ s, apply }: { s: GameState; apply: Apply }) {
                 <div className="payslip-row">
                   <span>
                     {label}{' '}
-                    <button className="ghost" aria-expanded={help === k} onClick={() => setHelp(help === k ? null : k)}>
+                    <button className="tertiary small" aria-expanded={help === k} onClick={() => setHelp(help === k ? null : k)}>
                       これは?
                     </button>
                   </span>
@@ -162,12 +118,14 @@ export function PayslipView({ s, apply }: { s: GameState; apply: Apply }) {
         <p className="net-box">差引支給額(手取り):{yen(p.net)}</p>
         <p className="note">額面の {((p.net / p.gross) * 100).toFixed(1)}% が手取りになりました。</p>
         <div className="tool-row">
-          <button onClick={() => setWhy(true)}>なぜ?(計算の内訳)</button>
+          <button className="tertiary" onClick={() => setWhy(true)}>🔍 計算の内訳を見る</button>
         </div>
       </section>
-      <button className="primary" onClick={() => apply((x) => ({ ...x, sceneId: 'firstYearChoices' }))}>
-        5月へ進む
-      </button>
+      <div className="actions">
+        <button className="primary" onClick={() => apply((x) => ({ ...x, sceneId: 'firstYearChoices' }))}>
+          5月へ進む
+        </button>
+      </div>
       {why && (
         <Modal title="なぜこの金額?" onClose={() => setWhy(false)}>
           <h3>社会保険料</h3>
@@ -201,23 +159,25 @@ export function FirstYearChoicesView({ s, apply }: { s: GameState; apply: Apply 
   const [quake, setQuake] = useState(true)
   const [ideco, setIdeco] = useState(5000)
   const limit = r.incomeTax.ideco.employeeNoCorporatePensionMonthlyLimit
+  // 保険は安心(しあわせ)、iDeCoは将来のお金
+  const effect: GaugeDelta = { happy: (life ? 4 : 0) + (quake ? 3 : 0), money: ideco > 0 ? 3 : 0 }
   return (
     <section className="card">
-      <fieldset style={{ border: 0, padding: 0, margin: '0 0 12px' }}>
+      <fieldset className="q-group">
         <legend><strong>① 医療保険(生命保険の一種)に入る?</strong> 月{LIFE_INSURANCE_MONTHLY.toLocaleString()}円</legend>
         <div className="radio-row">
           <label><input type="radio" name="life" checked={life} onChange={() => setLife(true)} />入る</label>
           <label><input type="radio" name="life" checked={!life} onChange={() => setLife(false)} />入らない</label>
         </div>
       </fieldset>
-      <fieldset style={{ border: 0, padding: 0, margin: '0 0 12px' }}>
+      <fieldset className="q-group">
         <legend><strong>② 賃貸の火災保険に地震保険をつける?</strong> 年{EARTHQUAKE_PREMIUM.toLocaleString()}円</legend>
         <div className="radio-row">
           <label><input type="radio" name="quake" checked={quake} onChange={() => setQuake(true)} />つける</label>
           <label><input type="radio" name="quake" checked={!quake} onChange={() => setQuake(false)} />つけない</label>
         </div>
       </fieldset>
-      <fieldset style={{ border: 0, padding: 0, margin: '0 0 12px' }}>
+      <fieldset className="q-group">
         <legend><strong>③ iDeCo(個人型確定拠出年金)を始める?</strong> 上限 月{limit.toLocaleString()}円(企業年金のない会社員)</legend>
         <div className="radio-row">
           {[0, 5000, 10000, limit].map((v) => (
@@ -227,11 +187,17 @@ export function FirstYearChoicesView({ s, apply }: { s: GameState; apply: Apply 
             </label>
           ))}
         </div>
-        <p className="note">※ 2026年12月分の掛金からは上限が月6.2万円に上がります(このゲームでは1年目は旧上限で計算)。</p>
+        <p className="note">※ 2026年12月分からは上限が月6.2万円に上がります(1年目は旧上限で計算)。</p>
       </fieldset>
-      <button className="primary" onClick={() => apply((x) => ({ ...chooseFirstYearOptions(x, { lifeInsurance: life, earthquake: quake, idecoMonthly: ideco }), sceneId: 'june' }))}>
-        決めた!6月へ進む
-      </button>
+      <div className="actions">
+        <EffectChips d={effect} />
+        <button
+          className="primary"
+          onClick={() => apply((x) => ({ ...addGauges(chooseFirstYearOptions(x, { lifeInsurance: life, earthquake: quake, idecoMonthly: ideco }), effect), sceneId: 'june' }))}
+        >
+          決めた!6月へ進む
+        </button>
+      </div>
     </section>
   )
 }

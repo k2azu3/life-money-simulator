@@ -53,7 +53,7 @@ function ChartFrame({
         <figcaption>
           <h3 style={{ margin: 0 }}>{title}</h3>
         </figcaption>
-        <button className="ghost" style={{ minHeight: 36, padding: '4px 10px', fontSize: '0.85rem' }} onClick={() => setShowTable(!showTable)} aria-pressed={showTable}>
+        <button className="tertiary small" onClick={() => setShowTable(!showTable)} aria-pressed={showTable}>
           {showTable ? 'グラフで見る' : '表で見る'}
         </button>
       </div>
